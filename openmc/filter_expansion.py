@@ -402,6 +402,54 @@ class ZernikeFilter(ExpansionFilter):
     .. math::
         j = \frac{n(n + 2) + m}{2}.
 
+    ----- This is the start of my stuff -----
+    This filter also allows scores to be calculated over a regular polygon
+    with the number of sides on the polygon equal to num_sides. If num_sides
+    is the default of 0, the filter will score over the unit disk. However,
+    if num_sides is >= 3, the filter will score over the corresponding regular
+    polygon.
+
+    The transformation over the regular polygon follows the same math as the
+    score calculation of the circular Zernike polynomials except for the
+    radius normalization. The Zernike polynomials are orthonormal over the
+    values of rho [0, 1]. Given a disk with an outer radius R != 1, the local
+    radius r at a point x,y is transformed into rho by dividing by r.
+
+    .. math::
+        rho = \frac{r}{R}.
+
+    A similar normalization occurs for the polygon tally, however, R is now
+    a function of theta. R, the variable radius at each theta, is the
+    distance from the center of the polygon to the edge of the polygon.
+    R follows the definition by Ferreira, Lopez, Navarro, and Sinusia,
+    *Orthogonal systems of Zernike type in polygons and polygonal facets*.
+    
+    R(:math:'\theta') is defined as
+
+    ..math::
+        R(\theta) = \frac{R_0 \cos (\alpha)}
+        {\cos (U_alpha(\theta)}
+
+    Where :math:'R_0' is the radius of the polygon, :math:'alpha' is half the
+    spanned by a single sector of the polygon, and :math:'U_{\alpha}' is an
+    intermediate function used to track the angle trough the current sector.
+
+    :math:'\alpha' is given as
+
+    ..math::
+        \alpha = \frac{\pi}{p}
+
+    where :math:'p' is the number of sides of the polgon.
+
+    :math:'U_{\alpha}' is given as
+
+    ..math::
+        U_{\alpha}(\theta) = \theta - int( \frac{\theta + \alpha}{2 \alpha})
+        2 \alpha
+
+    ----- End of my stuff -----
+    
+
     Parameters
     ----------
     order : int
@@ -412,6 +460,8 @@ class ZernikeFilter(ExpansionFilter):
         y-coordinate of center of circle for normalization
     r : float
         Radius of circle for normalization
+    num_sides : int, optional
+        Number of sides of the regular polygon for normalization
 
     Attributes
     ----------
@@ -423,6 +473,8 @@ class ZernikeFilter(ExpansionFilter):
         y-coordinate of center of circle for normalization
     r : float
         Radius of circle for normalization
+    num_sides : int, optional
+        Number of sides of the regular polygon for normalization
     id : int
         Unique identifier for the filter
     num_bins : int
@@ -430,11 +482,12 @@ class ZernikeFilter(ExpansionFilter):
 
     """
 
-    def __init__(self, order, x=0.0, y=0.0, r=1.0, filter_id=None):
+    def __init__(self, order, x=0.0, y=0.0, r=1.0, num_sides=0, filter_id=None):
         super().__init__(order, filter_id)
         self.x = x
         self.y = y
         self.r = r
+        self.num_sides = int(num_sides)
 
     def __hash__(self):
         string = type(self).__name__ + '\n'
@@ -442,11 +495,13 @@ class ZernikeFilter(ExpansionFilter):
         string += '{: <16}=\t{}\n'.format('\tX', self.x)
         string += '{: <16}=\t{}\n'.format('\tY', self.y)
         string += '{: <16}=\t{}\n'.format('\tR', self.r)
+        string += '{: <16}=\t{}\n'.format('\tNumSides', self.num_sides)
         return hash(string)
 
     def __repr__(self):
         string = type(self).__name__ + '\n'
         string += '{: <16}=\t{}\n'.format('\tOrder', self.order)
+        string += '{: <16}=\t{}\n'.format('\tNumSides', self.num_sides)
         string += '{: <16}=\t{}\n'.format('\tID', self.id)
         return string
 
@@ -484,6 +539,26 @@ class ZernikeFilter(ExpansionFilter):
         cv.check_type('r', r, Real)
         self._r = r
 
+    @property
+    def num_sides(self):
+        return self._num_sides
+
+    @num_sides.setter
+    def num_sides(self, num_sides):
+        cv.check_type('num_sides', num_sides, int)
+
+        if (num_sides == 0):
+            self._num_sides = 0
+            return
+
+        if (num_sides < 3):
+            raise ValueError("The number of sides, {}, is not the "
+                             + "default of 0, corresponding to a "
+                             + "disk, and is less than 3, the fewest "
+                             + "number of sides a regular polygon can "
+                             + "have".format(num_sides))
+        self._num_sides = num_sides
+
     @classmethod
     def from_hdf5(cls, group, **kwargs):
         if group['type'][()].decode() != cls.short_name.lower():
@@ -493,9 +568,10 @@ class ZernikeFilter(ExpansionFilter):
 
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
         order = group['order'][()]
-        x, y, r = group['x'][()], group['y'][()], group['r'][()]
+        x, y, r =  group['x'][()], group['y'][()], group['r'][()]
+        num_sides = group['num_sides'][()]
 
-        return cls(order, x, y, r, filter_id)
+        return cls(order, x, y, r, num_sides, filter_id)
 
     def to_xml_element(self):
         """Return XML Element representing the filter.
@@ -513,6 +589,8 @@ class ZernikeFilter(ExpansionFilter):
         subelement.text = str(self.y)
         subelement = ET.SubElement(element, 'r')
         subelement.text = str(self.r)
+        subelement = ET.SubElement(element, 'num_sides')
+        subelement.text = str(self.num_sides)
 
         return element
 
@@ -523,7 +601,8 @@ class ZernikeFilter(ExpansionFilter):
         x = float(elem.find('x').text)
         y = float(elem.find('y').text)
         r = float(elem.find('r').text)
-        return cls(order, x, y, r, filter_id=filter_id)
+        num_sides = int(elem.find('num_sides').text)
+        return cls(order, x, y, r, num_sides, filter_id=filter_id)
 
 
 class ZernikeRadialFilter(ZernikeFilter):

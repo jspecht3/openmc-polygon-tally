@@ -24,6 +24,7 @@ void ZernikeFilter::from_xml(pugi::xml_node node)
   x_ = std::stod(get_node_value(node, "x"));
   y_ = std::stod(get_node_value(node, "y"));
   r_ = std::stod(get_node_value(node, "r"));
+  num_sides_ = std::stoi(get_node_value(node, "num_sides"));
 }
 
 void ZernikeFilter::get_all_bins(
@@ -32,9 +33,26 @@ void ZernikeFilter::get_all_bins(
   // Determine the normalized (r,theta) coordinates.
   double x = p.r().x - x_;
   double y = p.r().y - y_;
-  double r = std::sqrt(x * x + y * y) / r_;
-  double theta = std::atan2(y, x);
+  double theta = std::atan2(y, x) + 2 * M_PI * (y < 0);
+	int num_sides = num_sides_;
+	double r;
 
+  if (num_sides_ == 0) {  
+    // Normalizing r for the unit disk.
+    r = std::sqrt(x * x + y * y) / r_;
+  }
+
+  if (num_sides_ != 0) {
+    // Normalizing r for the regular polygon.
+		double alpha = M_PI / num_sides_;
+	  
+		int sector = double((theta + alpha) / (2 * alpha));
+		double u_alpha = (theta - sector * 2 * alpha);
+    double r_alpha = r_ * cos(alpha) / cos(u_alpha);
+
+		r = std::sqrt(x * x + y * y) / r_alpha;
+  }
+  
   if (r <= 1.0) {
     // Compute and return the Zernike weights.
     vector<double> zn(n_bins_);
@@ -53,6 +71,7 @@ void ZernikeFilter::to_statepoint(hid_t filter_group) const
   write_dataset(filter_group, "x", x_);
   write_dataset(filter_group, "y", y_);
   write_dataset(filter_group, "r", r_);
+	write_dataset(filter_group, "num_sides", num_sides_); 
 }
 
 std::string ZernikeFilter::text_label(int bin) const
