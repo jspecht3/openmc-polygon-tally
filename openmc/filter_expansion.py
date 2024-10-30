@@ -569,9 +569,9 @@ class ZernikeFilter(ExpansionFilter):
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
         order = group['order'][()]
         x, y, r =  group['x'][()], group['y'][()], group['r'][()]
-#        num_sides = group['num_sides'][()]
+        num_sides = group['num_sides'][()]
 
-        return cls(order, x, y, r, filter_id)
+        return cls(order, x, y, r, num_sides, filter_id)
 
     def to_xml_element(self):
         """Return XML Element representing the filter.
